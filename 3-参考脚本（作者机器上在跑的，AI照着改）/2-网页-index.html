@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>语音直连</title>
+<style>
+  :root{
+    --bg:#f6f6f7; --panel:#fff; --fg:#1b1b1e; --dim:#76767f; --line:#e3e3e8;
+    --accent:#2b6cf6; --accent-fg:#fff; --me:#e8efff; --ai:#fff; --ask:#fff5dd;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#131316; --panel:#1c1c21; --fg:#ececf1; --dim:#9a9aa5; --line:#2c2c33;
+      --accent:#4d8bff; --accent-fg:#fff; --me:#1d2b47; --ai:#1c1c21; --ask:#3a2f14;
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:16px/1.55 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    display:flex; flex-direction:column; height:100dvh; overflow:hidden;
+  }
+  header{
+    display:flex; align-items:center; gap:8px; padding:10px 12px;
+    padding-top:max(10px, env(safe-area-inset-top));
+    background:var(--panel); border-bottom:1px solid var(--line); flex:0 0 auto;
+  }
+  .agents{display:flex; gap:6px; flex:1 1 auto; min-width:0}
+  .agents button{
+    flex:1 1 0; min-width:0; padding:8px 6px; border-radius:10px; border:1px solid var(--line);
+    background:transparent; color:var(--fg); font-size:15px; font-weight:600; cursor:pointer;
+  }
+  .agents button.on{background:var(--accent); border-color:var(--accent); color:var(--accent-fg)}
+  .switch{display:flex; align-items:center; gap:6px; color:var(--dim); font-size:14px; white-space:nowrap}
+  .switch input{width:18px; height:18px}
+  main{
+    flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch;
+    padding:12px; display:flex; flex-direction:column; gap:10px;
+  }
+  .msg{max-width:92%; padding:10px 12px; border-radius:14px; border:1px solid var(--line);
+       white-space:pre-wrap; word-break:break-word}
+  .me{align-self:flex-end; background:var(--me)}
+  .ai{align-self:flex-start; background:var(--ai)}
+  .ai .who{display:block; font-size:12px; color:var(--dim); margin-bottom:4px}
+  .ask{align-self:stretch; background:var(--ask); max-width:100%}
+  .status{color:var(--dim); font-size:13px; text-align:center; padding:2px 0}
+  footer{
+    flex:0 0 auto; padding:10px 12px calc(12px + env(safe-area-inset-bottom));
+    background:var(--panel); border-top:1px solid var(--line); text-align:center;
+  }
+  #ptt{
+    width:100%; max-width:520px; padding:20px 12px; border-radius:16px; border:0;
+    background:var(--accent); color:var(--accent-fg); font-size:20px; font-weight:700;
+    cursor:pointer; touch-action:none; user-select:none; -webkit-user-select:none;
+  }
+  #ptt.rec{background:#e0433f}
+  #ptt:active{transform:scale(.99)}
+  #hint{margin-top:6px; color:var(--dim); font-size:12px; min-height:16px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="agents" id="agents">
+    <button data-agent="pi">Pi</button>
+    <button data-agent="claude">Claude</button>
+    <button data-agent="kimi">Kimi</button>
+  </div>
+  <label class="switch"><input type="checkbox" id="vad"> 免按键</label>
+</header>
+
+<main id="log"></main>
+
+<footer>
+  <button id="ptt">按住说话</button>
+  <div id="hint">按住按钮 / 空格说话，松开就发</div>
+</footer>
+
+<script>
+"use strict";
+const LS = {
+  get(k, d){ try { const v = localStorage.getItem(k); return v === null ? d : v; } catch(e){ return d; } },
+  set(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+};
+
+const AGENT_NAMES = { pi:"Pi", claude:"Claude", kimi:"Kimi" };
+const S = {
+  agent: LS.get("voice.agent", "pi"),
+  vad: LS.get("voice.vad", "0") === "1",
+  rec: false, recByVad: false, chunks: [], rate: 48000,
+  ac: null, mic: null, proc: null, sink: null,
+  turnSeq: 0, ctrl: null, statusEl: null,
+  playCtx: null, playT: 0, sources: new Set()
+};
+if (!AGENT_NAMES[S.agent]) S.agent = "pi";
+
+const $log = document.getElementById("log");
+const $ptt = document.getElementById("ptt");
+const $vad = document.getElementById("vad");
+const $hint = document.getElementById("hint");
+
+/* ---------------- 记录区 ---------------- */
+function addMsg(kind, text, who){
+  const d = document.createElement("div");
+  d.className = "msg " + kind;
+  if (who){ const w = document.createElement("span"); w.className = "who"; w.textContent = who; d.appendChild(w); }
+  d.appendChild(document.createTextNode(text));
+  $log.appendChild(d);
+  $log.scrollTop = $log.scrollHeight;
+  return d;
+}
+function setStatus(text){
+  if (!S.statusEl){
+    S.statusEl = document.createElement("div");
+    S.statusEl.className = "status";
+    $log.appendChild(S.statusEl);
+  }
+  S.statusEl.textContent = text;
+  $log.scrollTop = $log.scrollHeight;
+}
+function clearStatus(){
+  if (S.statusEl && S.statusEl.parentNode) S.statusEl.parentNode.removeChild(S.statusEl);
+  S.statusEl = null;
+}
+function resetStatus(text){ clearStatus(); setStatus(text); }
+
+/* ---------------- 对象选择 ---------------- */
+document.getElementById("agents").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-agent]");
+  if (!b) return;
+  S.agent = b.dataset.agent;
+  LS.set("voice.agent", S.agent);
+  paintAgents();
+  $hint.textContent = "当前：" + AGENT_NAMES[S.agent];
+});
+function paintAgents(){
+  document.querySelectorAll("#agents button").forEach((b) => {
+    b.classList.toggle("on", b.dataset.agent === S.agent);
+  });
+}
+paintAgents();
+$hint.textContent = "当前：" + AGENT_NAMES[S.agent];
+
+/* ---------------- 麦克风 ---------------- */
+async function ensureMic(){
+  if (S.mic) { if (S.ac && S.ac.state === "suspended") await S.ac.resume(); return; }
+  S.mic = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true, channelCount:1 }
+  });
+  S.ac = new (window.AudioContext || window.webkitAudioContext)();
+  S.rate = S.ac.sampleRate;
+  const src = S.ac.createMediaStreamSource(S.mic);
+  S.proc = S.ac.createScriptProcessor(4096, 1, 1);
+  S.sink = S.ac.createGain();
+  S.sink.gain.value = 0;                       // 只为了让处理节点跑起来，不真出声
+  S.proc.onaudioprocess = (ev) => onFrame(ev.inputBuffer.getChannelData(0));
+  src.connect(S.proc);
+  S.proc.connect(S.sink);
+  S.sink.connect(S.ac.destination);
+}
+
+const VAD_ON = 0.028;      // 开口阈值
+const VAD_OFF = 0.014;     // 静音阈值
+const VAD_SILENCE_MS = 800;
+let vadSilence = 0;
+
+function onFrame(buf){
+  const ms = (buf.length / S.rate) * 1000;
+  if (S.vad){
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+    const rms = Math.sqrt(sum / buf.length);
+    if (!S.rec && rms > VAD_ON){
+      stopAudio();                              // 插话：一开口就停掉正在播的声音
+      startRec(true);
+      vadSilence = 0;
+    }
+    if (S.rec && S.recByVad){
+      if (rms < VAD_OFF){
+        vadSilence += ms;
+        if (vadSilence >= VAD_SILENCE_MS){
+          pushChunk(buf);
+          stopAndSend();
+          return;
+        }
+      } else {
+        vadSilence = 0;
+      }
+    }
+  }
+  if (S.rec) pushChunk(buf);
+}
+
+function pushChunk(buf){
+  const c = new Float32Array(buf.length);
+  c.set(buf);
+  S.chunks.push(c);
+}
+function startRec(byVad){
+  if (S.rec) return;
+  S.rec = true; S.recByVad = !!byVad; S.chunks = []; vadSilence = 0;
+  $ptt.classList.add("rec");
+  $ptt.textContent = "我在听…";
+  setStatus("正在听…");
+}
+function stopRec(){
+  if (!S.rec) return null;
+  S.rec = false;
+  $ptt.classList.remove("rec");
+  $ptt.textContent = "按住说话";
+  const total = S.chunks.reduce((n, c) => n + c.length, 0);
+  if (!total) return null;
+  const all = new Float32Array(total);
+  let off = 0;
+  for (const c of S.chunks){ all.set(c, off); off += c.length; }
+  S.chunks = [];
+  if (total / S.rate < 0.25) return null;       // 太短，不要
+  const pcm = resample(all, S.rate, 16000);
+  return encodeWav(pcm, 16000);
+}
+function stopAndSend(){
+  const blob = stopRec();
+  clearStatus();
+  if (blob) sendTurn(blob);
+  else setStatus("（没听到声音）");
+}
+
+/* ---------------- 音频编码 ---------------- */
+function resample(data, from, to){
+  if (from === to) return data;
+  const ratio = from / to;
+  const n = Math.max(1, Math.floor(data.length / ratio));
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i++){
+    const p = i * ratio, i0 = Math.floor(p), i1 = Math.min(data.length - 1, i0 + 1), f = p - i0;
+    out[i] = data[i0] * (1 - f) + data[i1] * f;
+  }
+  return out;
+}
+function encodeWav(samples, rate){
+  const n = samples.length;
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(buf);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVE");
+  w(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true);
+  v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 2, true);
+  let o = 44;
+  for (let i = 0; i < n; i++){
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    o += 2;
+  }
+  return new Blob([buf], { type: "audio/wav" });
+}
+
+/* ---------------- 播放 ---------------- */
+function ensurePlay(){
+  if (!S.playCtx) S.playCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (S.playCtx.state === "suspended") S.playCtx.resume();
+  return S.playCtx;
+}
+function enqueuePcm(b64){
+  const ctx = ensurePlay();
+  const bin = atob(b64);
+  const n = bin.length >> 1;
+  if (!n) return;
+  const buffer = ctx.createBuffer(1, n, 24000);
+  const ch = buffer.getChannelData(0);
+  for (let i = 0; i < n; i++){
+    let s = bin.charCodeAt(i * 2) | (bin.charCodeAt(i * 2 + 1) << 8);
+    if (s >= 0x8000) s -= 0x10000;
+    ch[i] = s / 32768;
+  }
+  const node = ctx.createBufferSource();
+  node.buffer = buffer;
+  node.connect(ctx.destination);
+  const t = Math.max(ctx.currentTime + 0.03, S.playT);
+  node.start(t);
+  S.playT = t + buffer.duration;
+  S.sources.add(node);
+  node.onended = () => S.sources.delete(node);
+}
+function stopAudio(){
+  for (const n of S.sources){ try { n.stop(); } catch(e){} }
+  S.sources.clear();
+  S.playT = 0;
+}
+
+/* ---------------- 发送 / SSE ---------------- */
+async function sendTurn(blob){
+  const seq = ++S.turnSeq;
+  if (S.ctrl) { try { S.ctrl.abort(); } catch(e){} }
+  const ctrl = new AbortController();
+  S.ctrl = ctrl;
+  stopAudio();
+  clearStatus();
+  setStatus("正在听写…");
+
+  const fd = new FormData();
+  fd.append("file", blob, "in.wav");
+  fd.append("agent", S.agent);
+
+  let res;
+  try {
+    res = await fetch("/api/turn", { method:"POST", body: fd, signal: ctrl.signal });
+  } catch(e){
+    if (seq === S.turnSeq) setStatus("（连不上本机服务）");
+    return;
+  }
+  if (!res.ok || !res.body){
+    setStatus("（服务出错了：" + res.status + "）");
+    return;
+  }
+
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let pending = "";
+  let aiEl = null;
+
+  try {
+    while (true){
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (seq !== S.turnSeq) return;           // 已经来了一轮新的
+      pending += dec.decode(value, { stream:true });
+      let idx;
+      while ((idx = pending.indexOf("\n\n")) >= 0){
+        const block = pending.slice(0, idx);
+        pending = pending.slice(idx + 2);
+        for (const line of block.split("\n")){
+          if (!line.startsWith("data:")) continue;
+          let ev;
+          try { ev = JSON.parse(line.slice(5).trim()); } catch(e){ continue; }
+          handleEvent(ev, seq, {
+            setAi: (el) => { aiEl = el; },
+            getAi: () => aiEl
+          });
+        }
+      }
+    }
+    if (seq === S.turnSeq) clearStatus();
+  } catch(e){
+    if (seq === S.turnSeq) clearStatus();
+  }
+}
+
+function handleEvent(ev, seq, holder){
+  if (seq !== S.turnSeq && ev.type === "audio") return;
+  switch (ev.type){
+    case "heard":
+      clearStatus();
+      addMsg("me", ev.text || "（没听清）");
+      break;
+    case "status":
+      resetStatus(ev.text || "");
+      break;
+    case "reply": {
+      clearStatus();
+      holder.setAi(addMsg("ai", ev.text || "", AGENT_NAMES[S.agent]));
+      break;
+    }
+    case "ask": {
+      clearStatus();
+      addMsg("ask", "要你选：\n" + (ev.text || ""));
+      break;
+    }
+    case "say":
+      if (!holder.getAi()) holder.setAi(addMsg("ai", "", AGENT_NAMES[S.agent]));
+      break;
+    case "audio":
+      if (ev.pcm) enqueuePcm(ev.pcm);
+      break;
+    case "done":
+      clearStatus();
+      break;
+  }
+}
+
+/* ---------------- 按住说话 ---------------- */
+let pttActive = false;
+
+async function pressStart(source){
+  if (pttActive) return;
+  pttActive = true;
+  try {
+    await ensureMic();
+  } catch(e){
+    pttActive = false;
+    $hint.textContent = "打不开麦克风：" + (e && e.message ? e.message : e);
+    return;
+  }
+  if (S.vad) return;                 // 免按键模式下不用手动录
+  stopAudio();
+  startRec(false);
+}
+function pressEnd(){
+  if (!pttActive) return;
+  pttActive = false;
+  if (!S.vad) stopAndSend();
+}
+
+$ptt.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  try { $ptt.setPointerCapture(e.pointerId); } catch(err){}
+  pressStart("pointer");
+});
+$ptt.addEventListener("pointerup", (e) => { e.preventDefault(); pressEnd(); });
+$ptt.addEventListener("pointercancel", () => pressEnd());
+$ptt.addEventListener("contextmenu", (e) => e.preventDefault());
+
+window.addEventListener("keydown", (e) => {
+  if (e.code !== "Space" || e.repeat) return;
+  const tag = (e.target && e.target.tagName) || "";
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "BUTTON") return;
+  e.preventDefault();
+  pressStart("key");
+});
+window.addEventListener("keyup", (e) => {
+  if (e.code !== "Space") return;
+  e.preventDefault();
+  pressEnd();
+});
+
+/* ---------------- 免按键 ---------------- */
+$vad.checked = S.vad;
+$vad.addEventListener("change", async () => {
+  S.vad = $vad.checked;
+  LS.set("voice.vad", S.vad ? "1" : "0");
+  if (S.vad){
+    try { await ensureMic(); $hint.textContent = "免按键：开口就说，停顿 0.8 秒自动发"; }
+    catch(e){
+      S.vad = false; $vad.checked = false;
+      $hint.textContent = "打不开麦克风：" + (e && e.message ? e.message : e);
+    }
+  } else {
+    $hint.textContent = "按住按钮 / 空格说话，松开就发";
+  }
+});
+if (S.vad) $hint.textContent = "免按键：开口就说，停顿 0.8 秒自动发";
+</script>
+</body>
+</html>

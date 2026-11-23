@@ -1,0 +1,35 @@
+{
+  "host": "127.0.0.1",
+  "port": 8780,
+  "default_agent": "pi",
+  "tts_speed": 1.0,
+  "tts_voice": "冰糖",
+  "workdir": "~/Documents",
+  "gbc": "~/bin/gbc",
+  "sessions": {
+    "pi": "gb-voice-pi",
+    "claude": "gb-voice-claude",
+    "kimi": "gb-voice-kimi"
+  },
+  "hotwords": [
+    {
+      "to": "Claude",
+      "from": ["克劳德code", "克劳德 code", "克劳德", "clot", "cloud", "claude code", "claude"]
+    },
+    {
+      "to": "Pi",
+      "scope": "command",
+      "from": ["派", "π", "pi"]
+    },
+    {
+      "to": "Kimi",
+      "from": ["kimi", "奇米", "基米"]
+    }
+  ],
+  "gateway": {
+    "model": "deepseek-v4.1-flash",
+    "models_json": "~/.pi/agent/models.json",
+    "provider": "local-gateway"
+  },
+  "placeholder": "（语音对话：先用一两句口语说结论，别用列表和代码块开头，细节放后面）"
+}

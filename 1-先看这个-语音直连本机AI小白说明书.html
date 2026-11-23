@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>语音直连本机 AI 小白说明书 · 按住说话，让电脑里的 AI 替你干活</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* 模板 A（工具包卡片流主力）：单文件、零外网资源、自动深浅色、手机 375px 零横向滚动 */
+:root{
+  --bg:#f4f6f8; --paper:#ffffff; --ink:#17212b; --muted:#5a6875; --line:#dde4eb;
+  --accent:#0b6e7f; --accent-soft:#e3f3f5;
+  --orange:#ea580c; --orange-soft:#fff1e8;
+  --red:#d92d20; --red-soft:#fdeceb;
+  --ok:#16794c; --ok-soft:#e6f6ee;
+  --say:#eef3f7;
+  --f-body:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e151b; --paper:#151f28; --ink:#e5edf4; --muted:#97a6b3; --line:#263440;
+  --accent:#4ac2d2; --accent-soft:#15343b;
+  --orange:#fb923c; --orange-soft:#352113;
+  --red:#f87171; --red-soft:#3a1c1a;
+  --ok:#4cc38a; --ok-soft:#142f22;
+  --say:#1c2934; color-scheme:dark}}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;overflow-x:hidden;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15.5px;line-height:1.7}
+.wrap{max-width:780px;margin:0 auto;padding:24px 16px 64px;display:flex;flex-direction:column;gap:20px}
+
+/* 顶部 Hero */
+.hero{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:22px 20px}
+.badges{display:flex;flex-wrap:wrap;gap:6px}
+.badge{display:inline-block;font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
+.badge.free{background:var(--ok-soft);color:var(--ok)}
+.badge.sys{background:var(--orange-soft);color:var(--orange)}
+h1{font-size:clamp(24px,6vw,34px);font-weight:900;line-height:1.22;margin:12px 0 8px}
+.lede{margin:0;color:var(--muted);font-size:15.5px}
+.goal-bar{margin-top:14px;padding:10px 14px;border-radius:10px;background:var(--orange-soft);color:var(--ink);font-size:14px;border-left:4px solid var(--orange)}
+
+/* 通用卡片 */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:20px 18px;min-width:0}
+h2{font-size:20px;font-weight:800;margin:0 0 12px;line-height:1.3}
+h3{font-size:16.5px;font-weight:700;margin:0 0 8px;line-height:1.35}
+p{margin:0 0 10px;overflow-wrap:break-word}
+p:last-child{margin-bottom:0}
+.muted{color:var(--muted);font-size:14px}
+code{font-family:var(--f-mono);font-size:.88em;background:var(--say);padding:1px 5px;border-radius:4px;word-break:break-all}
+
+/* 对比/亮点网格 */
+.grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
+@media (max-width:600px){.grid-2{grid-template-columns:minmax(0,1fr)}}
+.box{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0}
+.box b{display:block;font-size:14.5px;margin-bottom:3px}
+.box span{font-size:13.5px;color:var(--muted)}
+.box.good{border-left:4px solid var(--ok)}
+.box.bad{border-left:4px solid var(--muted)}
+
+/* 准备项（3列，手机自动单列） */
+.prep{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:600px){.prep{grid-template-columns:minmax(0,1fr)}}
+.prep-box{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;min-width:0}
+.prep-box b{display:block;font-size:14.5px;margin-bottom:3px}
+.prep-box span{font-size:13.5px;color:var(--muted)}
+
+/* 步骤列表 */
+.steps{display:flex;flex-direction:column;gap:14px}
+.step{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.step-head{display:flex;align-items:flex-start;gap:10px}
+.num{flex:0 0 auto;width:28px;height:28px;border-radius:50%;background:var(--orange);color:#fff;font-weight:800;font-size:14px;display:inline-flex;align-items:center;justify-content:center;margin-top:1px}
+.step-title{flex:1;min-width:0}
+.step-title h3{margin:0 0 2px;font-size:16.5px}
+.who-tag{display:inline-block;font-size:12px;font-weight:700;padding:1px 8px;border-radius:6px;margin-top:2px}
+.who-tag.ai{background:var(--accent-soft);color:var(--accent)}
+.who-tag.you{background:var(--orange-soft);color:var(--orange)}
+
+/* 提示词气泡 + 一键复制 */
+.prompt-box{position:relative;background:var(--say);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.prompt-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px}
+.prompt-lbl{font-size:12px;font-weight:700;color:var(--accent);letter-spacing:.03em}
+.copy-btn{flex:0 0 auto;font-family:var(--f-body);font-size:12.5px;font-weight:700;padding:4px 12px;border-radius:8px;border:1px solid var(--accent);background:var(--paper);color:var(--accent);cursor:pointer}
+.copy-btn:active{transform:scale(.97)}
+.copy-btn.done{background:var(--ok);border-color:var(--ok);color:#fff}
+.prompt-txt{font-size:14.5px;line-height:1.65;white-space:pre-wrap;word-break:break-word;color:var(--ink)}
+
+/* 验收提示 */
+.expect{background:var(--ok-soft);color:var(--ok);border-radius:10px;padding:10px 12px;font-size:14px;font-weight:500}
+
+/* 停下来等你 / 卡住了 */
+.list-orange{display:grid;gap:12px}
+.o-item{background:var(--bg);border:1px solid var(--line);border-left:4px solid var(--orange);border-radius:10px;padding:14px}
+.o-item b{display:block;font-size:15px;margin-bottom:4px}
+.o-item p{font-size:14px;color:var(--muted);margin:0 0 8px}
+.o-item p:last-child{margin-bottom:0}
+
+/* 折叠兜底 */
+details.fallback{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13.5px}
+details.fallback summary{cursor:pointer;font-weight:700;color:var(--orange);list-style:none}
+details.fallback summary::-webkit-details-marker{display:none}
+details.fallback .fb-body{margin-top:8px;color:var(--muted);line-height:1.65}
+
+.foot{text-align:center;font-size:13px;color:var(--muted);padding-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="badges">
+      <span class="badge">小白 60% 够用版</span>
+      <span class="badge free">本地离线听写 · 录音不上传</span>
+      <span class="badge sys">仅限 Mac</span>
+    </div>
+    <h1>对着电脑说话，让 AI 替你干活</h1>
+    <p class="lede">装好以后，你会有一个只有自己能打开的网页。按住按钮说一句话，你电脑里的 AI 就照办；它干完活，用小米「冰糖」把结论念给你听。想打断就喊一声「停」。</p>
+    <div class="goal-bar"><b>核心用法：</b>不用敲命令、不用看代码。把整个压缩包（或解压后的文件夹）丢给你的 AI，复制下面那句提示词发出去就行。</div>
+  </header>
+
+  <section class="card">
+    <h2>一、这是什么，装完能看到什么效果</h2>
+    <p>常见的语音助手都住在大公司的服务器上：把你说的话传上去，再让那边的模型回答，跟你自己电脑里的项目、文件、规矩完全是两回事。这个包做的正好相反——它只当你的「话筒和嗓子」，听懂和念出来都在你自己这台电脑上，真正干活的还是你电脑里的 Pi、Claude Code、Kimi。</p>
+    <div class="grid-2">
+      <div class="box bad">
+        <b>没装之前</b>
+        <span>想派活只能一个字一个字敲；说给手机助手听，它不懂你的项目，还得你复制粘贴一遍。</span>
+      </div>
+      <div class="box good">
+        <b>装好之后</b>
+        <span>按住大按钮随口说一句，原话直接进了 AI 的对话里；它干活的时候你松开手就能听，结论会被念出来。</span>
+      </div>
+    </div>
+    <div class="expect" style="margin-top:14px"><b>做完最终效果：</b>你按住说话「我生意目录下面有几个大类」，几秒后它把答案念给你听——手不用离开咖啡杯，键盘一下都不用碰。</div>
+  </section>
+
+  <section class="card">
+    <h2>二、动手前只需准备</h2>
+    <div class="prep">
+      <div class="prep-box">
+        <b>1. 一台 Mac 电脑</b>
+        <span>只支持 macOS。电脑里要已经装好一个能干活的 AI（Pi / Claude Code / Kimi Code 任意一个）。</span>
+      </div>
+      <div class="prep-box">
+        <b>2. 一个能改文件的 AI 助手</b>
+        <span>Codex / WorkBuddy / Pi / Claude Code 都行。装东西、改配置、自检全交给它，你不动手。</span>
+      </div>
+      <div class="prep-box">
+        <b>3. 一个语音 Key + 麦克风</b>
+        <span>去小米 MiMo 开放平台注册，拿一个 API Key（用来把文字念成声音，目前限时免费）；第一次说话时浏览器会问能不能用麦克风，点「允许」。</span>
+      </div>
+    </div>
+    <p class="muted" style="margin-top:12px">听写是在你电脑上离线跑的，不用另外买转写服务、也不上传录音；Key 只存在你自己电脑里，不会写进这份说明书。</p>
+  </section>
+
+  <section class="card">
+    <h2>三、怎么装：复制这句话发给你的 AI</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-head">
+          <span class="num">1</span>
+          <div class="step-title">
+            <h3>把压缩包或文件夹拖给 AI，再发下面这句</h3>
+            <span class="who-tag ai">剩下的安装、配置、自检全由 AI 完成</span>
+          </div>
+        </div>
+        <div class="prompt-box">
+          <div class="prompt-top">
+            <span class="prompt-lbl">首条安装提示词（点击复制）</span>
+            <button class="copy-btn" type="button">复制提示词</button>
+          </div>
+          <div class="prompt-txt">请先读这个文件夹里的 2-发给你的AI-让它照着做.md，先检查我电脑的环境，再按里面的步骤帮我把「语音直连本机 AI」完整装好、配置好并验证跑通。我是纯小白，不要让我敲命令、也不要让我看代码。过程中只有需要我登录、授权、给 MiMo API Key、或者拍板选哪个 AI 的时候才停下来告诉我，其他你自己做完。最后告诉我怎么打开这个网页。</div>
+        </div>
+        <div class="expect">装完验收标准：AI 回你一句「装好了」，并告诉你打开 <code>127.0.0.1:8780</code>（你也可以直接跟它说「帮我打开语音」）。页面上有一个大的圆形按钮，顶部写着 Pi / Claude / Kimi 三个名字。</div>
+      </div>
+
+      <div class="step">
+        <div class="step-head">
+          <span class="num">2</span>
+          <div class="step-title">
+            <h3>日常怎么用：张嘴说，不用说术语</h3>
+            <span class="who-tag you">装好后以后只说人话</span>
+          </div>
+        </div>
+        <p class="muted">不用记命令，照着下面这几句说就行：</p>
+        <div class="prompt-box">
+          <div class="prompt-top">
+            <span class="prompt-lbl">日常语录（照着说，也可以自己改）</span>
+            <button class="copy-btn" type="button">复制提示词</button>
+          </div>
+          <div class="prompt-txt">帮我打开语音。（第一次打开网页时说这句）
+把这个项目的说明再精简一下。（按住大按钮说完，松手就发）
+停。/ 别做了。（它跑偏了，喊这句立刻打断）
+切到 Claude。（换成另一个 AI 接着聊，Pi / Claude / Kimi 三选一）
+选一。/ 第二个。（它问你要不要批准、让你挑的时候这样说）</div>
+        </div>
+        <div class="expect">用顺手以后你会发现：「收到」是它先给你的一声回应，回答有多长取决于 AI 要干多久的活，别以为它卡住了。</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>四、哪些时候 AI 会停下来等你</h2>
+    <p class="muted">下面这几件事只跟你自己有关，AI 不会替你决定，做到这里会停下来问你：</p>
+    <div class="list-orange" style="margin-top:10px">
+      <div class="o-item">
+        <b>1. 向你要小米 MiMo 的 API Key</b>
+        <p>去小米 MiMo 开放平台生成一个 Key，直接发给 AI，让它帮你存到电脑里。这个 Key 只贴给你的 AI，别发群里、别发网上。</p>
+      </div>
+      <div class="o-item">
+        <b>2. 浏览器问「是否允许使用麦克风」</b>
+        <p>点「允许」。这是唯一必须你自己点的地方，点完以后就不用再点了。要是点成了「不允许」，在地址栏左边的设置里改回来，或者让 AI 带你重开一次。</p>
+      </div>
+      <div class="o-item">
+        <b>3. 第一次实机试说一句</b>
+        <p>AI 会让你对着页面说一句「你好，一加一等于几」。听到它先应一声「收到」、再把答案念出来，就算彻底通了。这一步只能你来，AI 没嗓子。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>五、卡住了怎么办</h2>
+    <div class="list-orange">
+      <div class="o-item">
+        <b>坑 1：按住说了半天，页面既不显示字也没反应</b>
+        <p>十有八九是麦克风权限被拒了，或者网页不是在这台装好服务的电脑上打开的。先看地址栏左边有没有被划掉的麦克风图标。</p>
+        <div class="prompt-box">
+          <div class="prompt-top">
+            <span class="prompt-lbl">排错提示词</span>
+            <button class="copy-btn" type="button">复制提示词</button>
+          </div>
+          <div class="prompt-txt">我按住说话没有反应，页面上也不出字。请按 2 号文档里的验收清单逐项检查：麦克风权限、语音服务有没有在跑、听写那一环能不能单独跑通。查出来直接修，修好后带我重新说一句。</div>
+        </div>
+      </div>
+
+      <div class="o-item">
+        <b>坑 2：字出来了，但一点声音都没有</b>
+        <p>多半是浏览器把自动播放拦住了，或者系统静音、音量为 0。先在页面上随便点一下，再检查电脑音量。要是还没声，就让 AI 查语音 Key 和合成的设置。</p>
+        <div class="prompt-box">
+          <div class="prompt-top">
+            <span class="prompt-lbl">排错提示词</span>
+            <button class="copy-btn" type="button">复制提示词</button>
+          </div>
+          <div class="prompt-txt">语音有文字回复，但完全没有声音。请从三处挨个排查：语音服务状态和日志、MiMo 的 Key 有没有存对、网页这边能不能正常播放。修好以后放一段测试音让我确认。</div>
+        </div>
+      </div>
+
+      <div class="o-item">
+        <b>坑 3：它把我的话听错了，比如把「Claude」听成「克劳德」、「派」听成 Pi</b>
+        <p>这是本地听写对英文名不熟，不是坏了。跟 AI 说一句，让它把正确的叫法加进「热词表」，以后就听得准了；自己说的时候稍微连起来说，别一个字一个字断。</p>
+        <div class="prompt-box">
+          <div class="prompt-top">
+            <span class="prompt-lbl">排错提示词</span>
+            <button class="copy-btn" type="button">复制提示词</button>
+          </div>
+          <div class="prompt-txt">我说话被听成了别的词，比如把「Claude」听成「克劳德」、「Pi」听成「派」。请把正确的说法加进热词表，注意别把平时说话里的「派」也一起改坏（只在「切到 / 用」后面才换），改完让我再说一句试试。</div>
+        </div>
+      </div>
+
+      <details class="fallback">
+        <summary>还是不行？点这里，让 AI 从头重来一遍</summary>
+        <div class="fb-body">
+          <p>先跟 AI 说：「把语音直连这套停掉、按 2 号文档重新装一遍，装完自己跑一遍接口测试再叫我。」重装不会动你的项目文件和对话记录。</p>
+          <p>如果它反复说某个东西「装不上」，把那句报错原文复制给 AI，别自己猜着删东西——删错了会更难修。</p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <footer class="foot">
+    语音直连本机 AI · 单文件离线说明书（模板 A 卡片流）<br>
+    本地听写、录音不上传；网页只在这台电脑上打开，别人进不来
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  document.querySelectorAll('.copy-btn').forEach(function(btn){
+    btn.addEventListener('click',function(){
+      var box = btn.closest('.prompt-box').querySelector('.prompt-txt');
+      var txt = box.textContent;
+      var ok = function(){
+        btn.textContent = '已复制';
+        btn.classList.add('done');
+        setTimeout(function(){
+          btn.textContent = '复制提示词';
+          btn.classList.remove('done');
+        }, 1500);
+      };
+      var fallback = function(){
+        var r = document.createRange();
+        r.selectNodeContents(box);
+        var s = getSelection();
+        s.removeAllRanges();
+        s.addRange(r);
+        btn.textContent = '已选中，按复制';
+      };
+      try{
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(txt).then(ok, fallback);
+        } else { fallback(); }
+      }catch(e){ fallback(); }
+    });
+  });
+})();
+</script>
+</body>
+</html>

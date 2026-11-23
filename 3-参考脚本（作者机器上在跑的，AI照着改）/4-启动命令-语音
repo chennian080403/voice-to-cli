@@ -1,0 +1,81 @@
+#!/bin/zsh
+# 语音 —— 语音直连。后台起 voice-link 服务，并用浏览器打开 http://127.0.0.1:8780
+# 用法：语音          起服务（已在跑就不重起）并打开页面
+#       语音 停       停掉服务
+#       语音 状态     看服务和会话状态
+set -u
+
+DIR=$HOME/voice-link
+LOG=$HOME/Library/Logs/voice-link.log
+PIDF=$HOME/Library/Logs/voice-link.pid
+PORT=8780
+URL="http://127.0.0.1:$PORT/"
+
+running() {
+  [[ -f $PIDF ]] || return 1
+  local pid=$(<$PIDF 2>/dev/null)
+  [[ -n $pid ]] && kill -0 $pid 2>/dev/null
+}
+
+start() {
+  if running; then
+    echo "服务已在跑（pid $(<$PIDF)）：$URL"
+    return 0
+  fi
+  mkdir -p ${LOG:h}
+  cd $DIR || return 1
+  nohup python3 $DIR/server.py >>$LOG 2>&1 &
+  echo $! >$PIDF
+  local i
+  for i in {1..80}; do
+    if curl -sf "${URL}api/state" >/dev/null 2>&1; then
+      echo "服务已起（pid $(<$PIDF)）：$URL"
+      return 0
+    fi
+    if ! kill -0 $(<$PIDF) 2>/dev/null; then
+      echo "❌ 服务没起来，看日志：$LOG"
+      tail -n 20 $LOG
+      rm -f $PIDF
+      return 1
+    fi
+    sleep 0.5
+  done
+  echo "⚠️ 40 秒还没就绪，看日志：$LOG"
+  return 1
+}
+
+stop() {
+  if ! running; then
+    rm -f $PIDF
+    echo "服务没在跑"
+    return 0
+  fi
+  local pid=$(<$PIDF)
+  kill $pid 2>/dev/null
+  local i
+  for i in {1..40}; do
+    kill -0 $pid 2>/dev/null || break
+    sleep 0.25
+  done
+  kill -0 $pid 2>/dev/null && kill -9 $pid 2>/dev/null
+  rm -f $PIDF
+  # 只停语音服务；gb-voice-* 会话留着，下次接着聊（要关用 gbc close）
+  echo "已停"
+}
+
+status() {
+  if running; then
+    echo "服务在跑（pid $(<$PIDF)）"
+    curl -s "${URL}api/state" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("当前对象：%s  忙闲：%s%s" % (d.get("names",{}).get(d.get("agent"),d.get("agent")), d.get("busy"), ("  待选：" + d["ask"][:60]) if d.get("ask") else ""))' 2>/dev/null
+    $HOME/bin/gbc ls 2>/dev/null | grep -E 'gb-voice' || true
+  else
+    echo "服务没在跑（$URL）"
+  fi
+}
+
+case ${1:-} in
+  "")     start && open "$URL" ;;
+  停|stop) stop ;;
+  状态|status) status ;;
+  *) echo "用法：语音 [停|状态]"; exit 1 ;;
+esac
